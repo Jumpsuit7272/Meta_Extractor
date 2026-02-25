@@ -1,0 +1,177 @@
+# RPD Critical Fields Rule Pack
+# Defines which fields are critical for comparison by document type.
+# Critical field conflicts escalate to review; severity rules apply.
+
+version: "1.0"
+description: "Critical fields and severity rules for document type comparison"
+
+document_types:
+  invoice:
+    description: "Invoices and receipts - financial totals, vendor, dates"
+    critical_fields:
+      - path: "blocks.kv.total"
+        severity_on_conflict: critical
+        description: "Invoice total amount"
+      - path: "blocks.kv.subtotal"
+        severity_on_conflict: high
+      - path: "blocks.kv.vendor"
+        severity_on_conflict: critical
+        description: "Vendor/supplier name"
+      - path: "blocks.kv.invoice_number"
+        severity_on_conflict: critical
+      - path: "blocks.kv.invoice_date"
+        severity_on_conflict: high
+      - path: "blocks.kv.due_date"
+        severity_on_conflict: medium
+      - path: "blocks.kv.tax"
+        severity_on_conflict: high
+      - path: "content_metadata.table_count"
+        severity_on_conflict: high
+        description: "Line items table count"
+      - path: "embedded_metadata.creation_date"
+        severity_on_conflict: medium
+      - path: "embedded_metadata.modified_date"
+        severity_on_conflict: high
+    structural_checks:
+      - field: "content_metadata.table_count"
+        severity: high
+      - field: "parts.length"
+        severity: high
+
+  receipt:
+    extends: invoice
+    critical_fields:
+      - path: "blocks.kv.total"
+        severity_on_conflict: critical
+      - path: "blocks.kv.vendor"
+        severity_on_conflict: critical
+      - path: "blocks.kv.date"
+        severity_on_conflict: high
+
+  identity_document:
+    description: "IDs, passports, licenses - identity verification"
+    critical_fields:
+      - path: "blocks.kv.full_name"
+        severity_on_conflict: critical
+      - path: "blocks.kv.date_of_birth"
+        severity_on_conflict: critical
+      - path: "blocks.kv.document_number"
+        severity_on_conflict: critical
+      - path: "blocks.kv.expiry_date"
+        severity_on_conflict: critical
+      - path: "blocks.kv.issuing_country"
+        severity_on_conflict: high
+      - path: "blocks.kv.address"
+        severity_on_conflict: high
+      - path: "embedded_metadata.creation_date"
+        severity_on_conflict: medium
+    structural_checks:
+      - field: "content_metadata.signature_count"
+        severity: high
+
+  contract:
+    description: "Legal contracts and agreements"
+    critical_fields:
+      - path: "embedded_metadata.author"
+        severity_on_conflict: high
+      - path: "embedded_metadata.creation_date"
+        severity_on_conflict: high
+      - path: "embedded_metadata.modified_date"
+        severity_on_conflict: critical
+        description: "Tampering indicator"
+      - path: "content_metadata.signature_count"
+        severity_on_conflict: critical
+      - path: "blocks.signature"
+        severity_on_conflict: critical
+      - path: "content_metadata.form_field_count"
+        severity_on_conflict: high
+      - path: "embedded_metadata.producer"
+        severity_on_conflict: high
+        description: "Toolchain change indicator"
+    structural_checks:
+      - field: "content_metadata.page_count"
+        severity: critical
+      - field: "content_metadata.signature_count"
+        severity: critical
+
+  general_pdf:
+    description: "Generic PDF documents"
+    critical_fields:
+      - path: "embedded_metadata.creation_date"
+        severity_on_conflict: medium
+      - path: "embedded_metadata.modified_date"
+        severity_on_conflict: medium
+      - path: "embedded_metadata.producer"
+        severity_on_conflict: medium
+      - path: "content_metadata.page_count"
+        severity_on_conflict: high
+      - path: "technical_metadata.hash_sha256"
+        severity_on_conflict: critical
+
+  image:
+    description: "Images with EXIF metadata"
+    critical_fields:
+      - path: "embedded_metadata.exif.datetime_original"
+        severity_on_conflict: high
+      - path: "embedded_metadata.exif.gps_latitude"
+        severity_on_conflict: medium
+      - path: "embedded_metadata.exif.gps_longitude"
+        severity_on_conflict: medium
+      - path: "embedded_metadata.exif.software"
+        severity_on_conflict: medium
+      - path: "technical_metadata.hash_sha256"
+        severity_on_conflict: critical
+
+  email:
+    description: "EML and MSG email files"
+    critical_fields:
+      - path: "embedded_metadata.from"
+        severity_on_conflict: critical
+      - path: "embedded_metadata.to"
+        severity_on_conflict: critical
+      - path: "embedded_metadata.date"
+        severity_on_conflict: high
+      - path: "embedded_metadata.subject"
+        severity_on_conflict: high
+      - path: "embedded_metadata.message_id"
+        severity_on_conflict: high
+      - path: "embedded_metadata.attachments"
+        severity_on_conflict: high
+    structural_checks:
+      - field: "parts.length"
+        severity: high
+
+  office_document:
+    description: "Word, Excel, PowerPoint"
+    critical_fields:
+      - path: "embedded_metadata.author"
+        severity_on_conflict: high
+      - path: "embedded_metadata.last_modified_by"
+        severity_on_conflict: high
+      - path: "embedded_metadata.modified_date"
+        severity_on_conflict: high
+      - path: "embedded_metadata.revision"
+        severity_on_conflict: medium
+      - path: "content_metadata.page_count"
+        severity_on_conflict: high
+      - path: "content_metadata.sheet_count"
+        severity_on_conflict: high
+      - path: "content_metadata.slide_count"
+        severity_on_conflict: high
+
+  archive:
+    description: "ZIP and other archives"
+    critical_fields:
+      - path: "embedded_metadata.manifest"
+        severity_on_conflict: high
+      - path: "technical_metadata.embedded_object_count"
+        severity_on_conflict: high
+      - path: "technical_metadata.hash_sha256"
+        severity_on_conflict: critical
+
+# Default severity for unspecified fields
+defaults:
+  unspecified_field_severity: low
+  escalate_to_review_threshold: critical
+  prefer_higher_confidence: true
+  prefer_geometry_support: true

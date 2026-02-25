@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rpd.io/schemas/comparison_report.json",
+  "title": "ComparisonReport",
+  "description": "Canonical output from run-to-run or source-to-source document comparison. Includes diffs, similarity scores, and conflict detection.",
+  "type": "object",
+  "required": ["status", "left_provenance", "right_provenance", "created_at"],
+  "properties": {
+    "id": { "type": "string", "description": "Unique comparison report ID" },
+    "status": {
+      "type": "string",
+      "enum": ["match", "partial_match", "conflict", "incompatible"],
+      "description": "Overall comparison status"
+    },
+    "similarity_scores": {
+      "type": "object",
+      "properties": {
+        "document_level": { "type": "number", "minimum": 0, "maximum": 1 },
+        "metadata_similarity": { "type": "number" },
+        "structure_similarity": { "type": "number" },
+        "content_similarity": { "type": "number" },
+        "per_part": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "part_id": { "type": "string" },
+              "similarity": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "metadata_diffs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/DiffItem" }
+    },
+    "structure_diffs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/DiffItem" }
+    },
+    "content_diffs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/DiffItem" }
+    },
+    "query_answer_diffs": {
+      "type": "array",
+      "description": "Diffs when query packs are used",
+      "items": { "$ref": "#/$defs/DiffItem" }
+    },
+    "severity_summary": {
+      "type": "object",
+      "properties": {
+        "low": { "type": "integer" },
+        "medium": { "type": "integer" },
+        "high": { "type": "integer" },
+        "critical": { "type": "integer" }
+      }
+    },
+    "narrative_summary": {
+      "type": "string",
+      "description": "Machine-generated 'what changed' summary"
+    },
+    "conflict_resolution": {
+      "type": "object",
+      "description": "Applied resolution policy and chosen values",
+      "properties": {
+        "policy": { "type": "string" },
+        "chosen_values": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "field": { "type": "string" },
+              "chosen_value": {},
+              "competing_candidates": { "type": "array" }
+            }
+          }
+        }
+      }
+    },
+    "left_provenance": { "$ref": "#/$defs/Provenance" },
+    "right_provenance": { "$ref": "#/$defs/Provenance" },
+    "left_run_id": { "type": "string" },
+    "right_run_id": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "DiffItem": {
+      "type": "object",
+      "required": ["diff_type", "severity"],
+      "properties": {
+        "diff_type": {
+          "type": "string",
+          "enum": ["added", "removed", "changed", "conflict"]
+        },
+        "path": { "type": "string", "description": "JSON path or field identifier" },
+        "left_value": {},
+        "right_value": {},
+        "severity": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "left_block_id": { "type": "string" },
+        "right_block_id": { "type": "string" },
+        "left_confidence": { "type": "number" },
+        "right_confidence": { "type": "number" },
+        "description": { "type": "string" }
+      }
+    },
+    "Provenance": {
+      "type": "object",
+      "properties": {
+        "run_id": { "type": "string" },
+        "extractor_version": { "type": "string" },
+        "extractor_name": { "type": "string" },
+        "source_uri": { "type": "string" }
+      }
+    }
+  }
+}

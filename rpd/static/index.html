@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <script>
+    (function(){
+      try{
+        var q=new URLSearchParams(location.search);
+        var t=q.get('theme');
+        if(t==='dark'||t==='light'){
+          document.documentElement.setAttribute('data-theme',t);
+          localStorage.setItem('rpd-theme',t);
+        }else{
+          t=localStorage.getItem('rpd-theme')||'dark';
+          document.documentElement.setAttribute('data-theme',t);
+        }
+      }catch(e){document.documentElement.setAttribute('data-theme','dark');}
+    })();
+  </script>
+  <title>RPD Meta Extractor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css?v=5">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-inner">
+        <h1 class="logo">
+          <span class="logo-icon">RPD</span>
+          <span class="logo-text">Meta Extractor</span>
+        </h1>
+        <p class="tagline">Extract metadata & compare document versions</p>
+      </div>
+      <nav class="nav">
+        <button class="nav-btn active" data-tab="extract">Extract</button>
+        <button class="nav-btn" data-tab="bulk">Bulk Upload</button>
+        <button class="nav-btn" data-tab="compare">Compare</button>
+        <span class="nav-spacer"></span>
+        <span class="theme-nav" id="themeFloat" role="group" aria-label="Theme">
+          <button type="button" class="theme-btn nav-theme-btn" id="themeLight" data-theme="light" title="Light mode">☀</button>
+          <button type="button" class="theme-btn nav-theme-btn" id="themeDark" data-theme="dark" title="Dark mode">☽</button>
+        </span>
+        <a href="/docs" class="nav-link" target="_blank">API Docs</a>
+      </nav>
+    </header>
+
+    <main class="main">
+      <!-- Extract Tab -->
+      <section id="extract" class="tab-panel active">
+        <div class="panel-header">
+          <h2>Extract metadata from a file</h2>
+          <p>Upload a document, image, email, or archive. Supported: PDF, DOCX, XLSX, images, EML, MSG, ZIP.</p>
+        </div>
+
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="fileInput" class="file-input" accept="*/*">
+          <div class="upload-content">
+            <div class="upload-icon">📄</div>
+            <p class="upload-text">Drop a file here or click to browse</p>
+            <p class="upload-hint" id="extractMaxHint">Max <span id="extractMaxMb">500</span> MB</p>
+          </div>
+        </div>
+
+        <div id="extractProgress" class="progress-bar hidden">
+          <div class="progress-fill"></div>
+          <span class="progress-text">Extracting...</span>
+        </div>
+
+        <div id="extractResult" class="result-panel hidden">
+          <div class="result-header">
+            <h3>Extraction Result</h3>
+            <div class="result-actions">
+              <span class="run-id" id="runIdDisplay"></span>
+              <button class="btn btn-sm btn-copy" id="copyResultBtn">Copy JSON</button>
+            </div>
+          </div>
+          <div class="result-tabs">
+            <button class="result-tab active" data-view="summary">Summary</button>
+            <button class="result-tab" data-view="metadata">Metadata</button>
+            <button class="result-tab" data-view="content">Content</button>
+            <button class="result-tab" data-view="raw">Raw JSON</button>
+          </div>
+          <div class="result-body">
+            <div id="viewSummary" class="result-view active"></div>
+            <div id="viewMetadata" class="result-view hidden"></div>
+            <div id="viewContent" class="result-view hidden"></div>
+            <pre id="viewRaw" class="result-view raw-view hidden"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Bulk Tab -->
+      <section id="bulk" class="tab-panel">
+        <div class="panel-header">
+          <h2>Bulk upload</h2>
+          <p>Upload multiple files at once. Max 50 files per batch, <span id="bulkMaxMb">500</span> MB each.</p>
+        </div>
+
+        <div class="bulk-upload-area">
+          <button type="button" class="btn btn-primary btn-bulk-upload" id="bulkUploadBtn">
+            📁 Select files for bulk upload
+          </button>
+          <span class="bulk-or">or drop files below</span>
+        </div>
+
+        <div class="upload-zone" id="bulkUploadZone">
+          <input type="file" id="bulkFileInput" class="file-input" accept="*/*" multiple>
+          <div class="upload-content">
+            <div class="upload-icon">📁</div>
+            <p class="upload-text">Drop multiple files here or click to browse</p>
+            <p class="upload-hint">Select multiple files (Ctrl+click or Shift+click)</p>
+          </div>
+        </div>
+
+        <div id="bulkProgress" class="progress-bar hidden">
+          <div class="progress-fill"></div>
+          <span class="progress-text" id="bulkProgressText">Extracting...</span>
+        </div>
+
+        <div id="bulkResult" class="result-panel hidden">
+          <div class="result-header">
+            <h3>Bulk Results</h3>
+            <button class="btn btn-sm btn-copy" id="copyBulkBtn">Copy all JSON</button>
+          </div>
+          <div id="bulkResultsList" class="bulk-results-list"></div>
+        </div>
+      </section>
+
+      <!-- Compare Tab -->
+      <section id="compare" class="tab-panel">
+        <div class="panel-header">
+          <h2>Compare two extractions</h2>
+          <p>Upload two files or use run IDs from previous extractions to see differences.</p>
+        </div>
+
+        <div class="compare-inputs">
+          <div class="compare-box">
+            <label>Document A</label>
+            <div class="compare-upload" id="compareUploadA">
+              <input type="file" id="fileA" class="file-input">
+              <span class="compare-placeholder">Drop file or use Run ID</span>
+            </div>
+            <input type="text" id="runIdA" class="run-id-input" placeholder="Or paste Run ID">
+            <div id="previewA" class="compare-preview hidden"></div>
+          </div>
+          <div class="compare-vs">vs</div>
+          <div class="compare-box">
+            <label>Document B</label>
+            <div class="compare-upload" id="compareUploadB">
+              <input type="file" id="fileB" class="file-input">
+              <span class="compare-placeholder">Drop file or use Run ID</span>
+            </div>
+            <input type="text" id="runIdB" class="run-id-input" placeholder="Or paste Run ID">
+            <div id="previewB" class="compare-preview hidden"></div>
+          </div>
+        </div>
+
+        <div class="compare-actions">
+          <button class="btn btn-primary" id="compareBtn" disabled>Compare</button>
+        </div>
+
+        <div id="compareProgress" class="progress-bar hidden">
+          <div class="progress-fill"></div>
+          <span class="progress-text">Comparing...</span>
+        </div>
+
+        <div id="compareResult" class="result-panel hidden">
+          <div class="result-header">
+            <h3>Comparison Report</h3>
+            <div class="result-actions">
+              <span class="status-badge" id="compareStatus"></span>
+              <button class="btn btn-sm btn-copy" id="copyCompareBtn">Copy JSON</button>
+            </div>
+          </div>
+          <div class="result-tabs">
+            <button class="result-tab active" data-view="compare-summary">Summary</button>
+            <button class="result-tab" data-view="compare-diffs">Diffs</button>
+            <button class="result-tab" data-view="compare-raw">Raw JSON</button>
+          </div>
+          <div class="result-body">
+            <div id="viewCompareSummary" class="result-view active"></div>
+            <div id="viewCompareDiffs" class="result-view hidden"></div>
+            <pre id="viewCompareRaw" class="result-view raw-view hidden"></pre>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>RPD Meta Extractor v0.1</span>
+      <span>
+        <a href="/intranet">Intranet</a> · <a href="/health" target="_blank">Health</a>
+      </span>
+    </footer>
+  </div>
+
+  <script src="/static/js/app.js?v=5"></script>
+</body>
+</html>

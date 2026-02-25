@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPD Meta Extractor – Intranet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f1419;
+      --bg-card: #1a2129;
+      --border: #2d3a47;
+      --text: #e6edf3;
+      --text-muted: #8b9cad;
+      --accent: #58a6ff;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'DM Sans', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 640px;
+      width: 100%;
+      text-align: center;
+    }
+    .logo {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, var(--accent), #a371f7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .tagline {
+      color: var(--text-muted);
+      font-size: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.2s;
+    }
+    .card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .card-icon {
+      font-size: 2.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .card-title {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .card-desc {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    .footer {
+      margin-top: 2.5rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    .footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="logo">RPD Meta Extractor</h1>
+    <p class="tagline">Extract metadata & compare document versions</p>
+
+    <div class="cards">
+      <a href="/" class="card">
+        <div class="card-icon">📄</div>
+        <div class="card-title">Open App</div>
+        <div class="card-desc">Extract, bulk upload, compare</div>
+      </a>
+      <a href="/docs" class="card" target="_blank">
+        <div class="card-icon">📚</div>
+        <div class="card-title">API Docs</div>
+        <div class="card-desc">OpenAPI / Swagger</div>
+      </a>
+      <a href="/health" class="card" target="_blank">
+        <div class="card-icon">✓</div>
+        <div class="card-title">Health</div>
+        <div class="card-desc">Service status</div>
+      </a>
+    </div>
+
+    <div class="footer">
+      RPD Meta Extractor v0.1 · Intranet
+    </div>
+  </div>
+</body>
+</html>

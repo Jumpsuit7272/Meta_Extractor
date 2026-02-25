@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rpd.io/schemas/extraction_result.json",
+  "title": "ExtractionResult",
+  "description": "Canonical output from universal metadata and content extraction. Single truth format for all file types.",
+  "type": "object",
+  "required": ["document", "provenance"],
+  "properties": {
+    "document": {
+      "type": "object",
+      "description": "Root document metadata",
+      "required": ["id", "technical_metadata"],
+      "properties": {
+        "id": { "type": "string", "description": "Unique document identifier" },
+        "technical_metadata": { "$ref": "#/$defs/TechnicalMetadata" },
+        "embedded_metadata": { "$ref": "#/$defs/EmbeddedMetadata" },
+        "content_metadata": { "$ref": "#/$defs/ContentMetadata" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "parts": {
+      "type": "array",
+      "description": "Pages, sheets, slides, attachments, embedded objects",
+      "items": { "$ref": "#/$defs/Part" }
+    },
+    "blocks": {
+      "type": "array",
+      "description": "Text lines, words, KV pairs, tables, selections, signatures",
+      "items": { "$ref": "#/$defs/Block" }
+    },
+    "relationships": {
+      "type": "array",
+      "description": "Links between parts and blocks",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_id": { "type": "string" },
+          "target_id": { "type": "string" },
+          "relation_type": { "type": "string", "enum": ["contains", "references", "child_of", "derived_from"] }
+        }
+      }
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    }
+  },
+  "$defs": {
+    "TechnicalMetadata": {
+      "type": "object",
+      "required": ["file_name", "mime_type", "file_size_bytes", "hash_sha256", "created_at_ingested"],
+      "properties": {
+        "file_name": { "type": "string" },
+        "mime_type": { "type": "string" },
+        "extension": { "type": "string" },
+        "file_size_bytes": { "type": "integer" },
+        "hash_sha256": { "type": "string" },
+        "hash_md5": { "type": "string" },
+        "created_at_ingested": { "type": "string", "format": "date-time" },
+        "source_system": { "type": "string" },
+        "source_uri": { "type": "string" },
+        "encryption_flag": { "type": "boolean" },
+        "password_protected_flag": { "type": "boolean" },
+        "embedded_object_count": { "type": "integer" }
+      }
+    },
+    "EmbeddedMetadata": {
+      "type": "object",
+      "description": "Type-specific embedded metadata (PDF, image EXIF, Office, email)",
+      "additionalProperties": true,
+      "properties": {
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "creator": { "type": "string" },
+        "producer": { "type": "string" },
+        "creation_date": { "type": "string" },
+        "modified_date": { "type": "string" },
+        "page_count": { "type": "integer" },
+        "exif": { "type": "object" },
+        "icc_profile": { "type": "string" },
+        "gps_coordinates": {
+          "type": "object",
+          "properties": { "latitude": { "type": "number" }, "longitude": { "type": "number" } }
+        },
+        "geolocation": { "type": "string", "description": "Reverse-geocoded place name from GPS" },
+        "last_modified_by": { "type": "string" },
+        "revision": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "cc": { "type": "string" },
+        "bcc": { "type": "string" },
+        "date": { "type": "string" },
+        "subject": { "type": "string" },
+        "message_id": { "type": "string" },
+        "attachments": { "type": "array" }
+      }
+    },
+    "ContentMetadata": {
+      "type": "object",
+      "properties": {
+        "language": { "type": "string" },
+        "language_confidence": { "type": "number" },
+        "page_count": { "type": "integer" },
+        "sheet_count": { "type": "integer" },
+        "slide_count": { "type": "integer" },
+        "text_length": { "type": "integer" },
+        "word_count": { "type": "integer" },
+        "table_count": { "type": "integer" },
+        "form_field_count": { "type": "integer" },
+        "selection_count": { "type": "integer" },
+        "signature_count": { "type": "integer" },
+        "entity_counts": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        }
+      }
+    },
+    "Geometry": {
+      "type": "object",
+      "description": "Bounding region (polygon or box)",
+      "properties": {
+        "type": { "enum": ["box", "polygon"] },
+        "bounds": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "width": { "type": "number" },
+            "height": { "type": "number" }
+          }
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+          }
+        }
+      }
+    },
+    "Part": {
+      "type": "object",
+      "required": ["id", "part_type"],
+      "properties": {
+        "id": { "type": "string" },
+        "part_type": { "type": "string", "enum": ["page", "sheet", "slide", "attachment", "embedded"] },
+        "index": { "type": "integer" },
+        "metadata": { "type": "object" },
+        "blocks": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "type": "number" },
+        "geometry": { "$ref": "#/$defs/Geometry" }
+      }
+    },
+    "Block": {
+      "type": "object",
+      "required": ["id", "block_type"],
+      "properties": {
+        "id": { "type": "string" },
+        "block_type": { "type": "string", "enum": ["text", "line", "word", "kv", "table", "cell", "selection", "signature", "form_field"] },
+        "part_id": { "type": "string" },
+        "content": { "type": "string" },
+        "value": {},
+        "key": { "type": "string" },
+        "cells": { "type": "array" },
+        "rows": { "type": "integer" },
+        "cols": { "type": "integer" },
+        "state": { "type": "string" },
+        "confidence": { "type": "number" },
+        "geometry": { "$ref": "#/$defs/Geometry" },
+        "children": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "Provenance": {
+      "type": "object",
+      "required": ["run_id", "extractor_version"],
+      "properties": {
+        "run_id": { "type": "string" },
+        "extractor_version": { "type": "string" },
+        "extractor_name": { "type": "string" },
+        "source_uri": { "type": "string" },
+        "extraction_timestamp": { "type": "string", "format": "date-time" },
+        "settings": { "type": "object" }
+      }
+    }
+  }
+}
