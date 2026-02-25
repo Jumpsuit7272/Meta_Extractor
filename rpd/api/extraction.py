@@ -1,9 +1,12 @@
 """Extraction API endpoints (FR - sync/async extraction)."""
 
+import csv
+import io
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from rpd.config import settings
 from rpd.models import ExtractionResult
@@ -142,6 +145,91 @@ async def extract_async(
         _jobs[job_id]["error"] = str(e)
 
     return {"job_id": job_id, "status": "submitted"}
+
+
+def _result_to_row(result: ExtractionResult) -> dict:
+    """Flatten an ExtractionResult into a single CSV-friendly dict."""
+    tech = result.document.technical_metadata
+    content = result.document.content_metadata
+    emb = result.document.embedded_metadata
+    return {
+        "run_id": result.provenance.run_id,
+        "file_name": tech.file_name,
+        "mime_type": tech.mime_type,
+        "extension": tech.extension,
+        "file_size_bytes": tech.file_size_bytes,
+        "hash_sha256": tech.hash_sha256,
+        "hash_md5": tech.hash_md5 or "",
+        "page_count": (content.page_count or "") if content else "",
+        "word_count": (content.word_count or 0) if content else 0,
+        "table_count": (content.table_count or 0) if content else 0,
+        "text_length": (content.text_length or 0) if content else 0,
+        "language": (content.language or "") if content else "",
+        "title": (emb.title or "") if emb else "",
+        "author": (emb.author or "") if emb else "",
+        "creator": (emb.creator or "") if emb else "",
+        "producer": (emb.producer or "") if emb else "",
+        "creation_date": (emb.creation_date or "") if emb else "",
+        "modified_date": (emb.modified_date or "") if emb else "",
+    }
+
+
+def _rows_to_csv(rows: list[dict]) -> str:
+    """Serialise a list of flat dicts to CSV string."""
+    if not rows:
+        return ""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
+@router.get("/jobs/{job_id}/result.csv")
+async def get_extraction_result_csv(job_id: str) -> StreamingResponse:
+    """Download extraction result as CSV (single row)."""
+    result: ExtractionResult | None = None
+    if job_id in _jobs:
+        j = _jobs[job_id]
+        if j["status"] != "completed":
+            raise HTTPException(status_code=202, detail=f"Job not completed: {j['status']}")
+        result = j["result"]
+    elif job_id in _results_by_run:
+        result = _results_by_run[job_id]
+    if result is None:
+        raise HTTPException(status_code=404, detail="Job or run not found")
+    csv_content = _rows_to_csv([_result_to_row(result)])
+    filename = result.document.technical_metadata.file_name.rsplit(".", 1)[0] + ".csv"
+    return StreamingResponse(
+        io.StringIO(csv_content),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/results/export.csv")
+async def export_results_csv(
+    run_ids: str = Query(..., description="Comma-separated list of run_ids"),
+) -> StreamingResponse:
+    """Download multiple extraction results as a multi-row CSV."""
+    ids = [r.strip() for r in run_ids.split(",") if r.strip()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="No run_ids provided")
+    rows = []
+    for rid in ids:
+        result: ExtractionResult | None = _results_by_run.get(rid)
+        if result is None and rid in _jobs:
+            result = _jobs[rid].get("result")
+        if result:
+            rows.append(_result_to_row(result))
+    if not rows:
+        raise HTTPException(status_code=404, detail="No results found for provided run_ids")
+    csv_content = _rows_to_csv(rows)
+    return StreamingResponse(
+        io.StringIO(csv_content),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="export.csv"'},
+    )
 
 
 @router.get("/jobs/{job_id}")

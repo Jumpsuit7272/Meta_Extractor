@@ -263,6 +263,17 @@ document.getElementById('copyResultBtn')?.addEventListener('click', () => {
   }
 });
 
+document.getElementById('downloadCsvBtn')?.addEventListener('click', () => {
+  const runId = lastExtraction?.provenance?.run_id;
+  if (!runId) return;
+  const a = document.createElement('a');
+  a.href = `${API}/extract/jobs/${runId}/result.csv`;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+});
+
 // --- Bulk ---
 const bulkUploadZone = document.getElementById('bulkUploadZone');
 const bulkFileInput = document.getElementById('bulkFileInput');
@@ -390,6 +401,21 @@ document.getElementById('copyBulkBtn')?.addEventListener('click', () => {
   if (lastBulkResults) {
     copyToClipboard(JSON.stringify(lastBulkResults, null, 2), document.getElementById('copyBulkBtn'));
   }
+});
+
+document.getElementById('downloadBulkCsvBtn')?.addEventListener('click', () => {
+  if (!lastBulkResults) return;
+  const runIds = lastBulkResults
+    .filter(item => item.run_id)
+    .map(item => item.run_id)
+    .join(',');
+  if (!runIds) return;
+  const a = document.createElement('a');
+  a.href = `${API}/extract/results/export.csv?run_ids=${encodeURIComponent(runIds)}`;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 });
 
 let lastCompareReport = null;
