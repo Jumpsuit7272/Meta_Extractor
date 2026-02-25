@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # Storage
     upload_dir: Path = Path("uploads")
     result_dir: Path = Path("results")
-    max_upload_mb: int = 500
+    max_upload_mb: int = 1024
 
     # Extraction
     default_extractor: str = "builtin"
