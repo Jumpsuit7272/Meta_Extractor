@@ -1,9 +1,12 @@
 """Ingestion: file bytes or storage URI (FR-01)."""
 
 import httpx
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from rpd.api.extraction import _results_by_run
+from rpd.database import get_db
+from rpd.db_service import persist_extraction_result
 from rpd.models import ExtractionResult
 from rpd.services.extraction_pipeline import run_extraction
 
@@ -16,6 +19,7 @@ async def ingest_by_uri(
     source_system: str = Body("", embed=True),
     run_id: str | None = Body(None, embed=True),
     ocr_enabled: bool = Body(True, embed=True),
+    db: AsyncSession = Depends(get_db),
 ) -> ExtractionResult:
     """
     Ingest file from storage URI (http/https or s3). Returns ExtractionResult.
@@ -51,4 +55,5 @@ async def ingest_by_uri(
         ocr_enabled=ocr_enabled,
     )
     _results_by_run[result.provenance.run_id] = result
+    await persist_extraction_result(db, result)
     return result

@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     normalize_dates: bool = True
     normalize_currency: bool = True
 
+    # Database
+    database_url: str = "sqlite+aiosqlite:///./rpd.db"
+
     # Storage backend (local | s3)
     storage_backend: str = "local"
     s3_bucket: str | None = None

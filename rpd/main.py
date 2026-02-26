@@ -12,12 +12,14 @@ from rpd.api.comparison import router as compare_router
 from rpd.api.extraction import router as extract_router
 from rpd.api.ingest import router as ingest_router
 from rpd.config import settings
+from rpd.database import init_db
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     settings.result_dir.mkdir(parents=True, exist_ok=True)
+    await init_db()
     yield
 
 

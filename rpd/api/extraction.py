@@ -5,10 +5,13 @@ import io
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from rpd.config import settings
+from rpd.database import get_db
+from rpd.db_service import load_extraction_result, persist_extraction_result
 from rpd.models import ExtractionResult
 from rpd.services.extraction_pipeline import run_extraction
 
@@ -29,6 +32,7 @@ async def extract_sync(
     run_id: str | None = Form(None),
     ocr_enabled: bool = Form(True),
     geolocation_lookup: bool | None = Form(None),  # None = use config
+    db: AsyncSession = Depends(get_db),
 ) -> ExtractionResult:
     """
     Synchronous extraction. Accepts file upload, returns canonical ExtractionResult.
@@ -54,6 +58,7 @@ async def extract_sync(
         geolocation_lookup=geolocation_lookup,
     )
     _results_by_run[result.provenance.run_id] = result
+    await persist_extraction_result(db, result)
     return result
 
 
@@ -63,6 +68,7 @@ async def extract_bulk(
     source_system: str = Form(""),
     ocr_enabled: bool = Form(True),
     geolocation_lookup: bool | None = Form(None),
+    db: AsyncSession = Depends(get_db),
 ) -> list[dict]:
     """
     Bulk extraction. Accepts multiple file uploads, returns list of ExtractionResults.
@@ -90,6 +96,7 @@ async def extract_bulk(
                 geolocation_lookup=geolocation_lookup,
             )
             _results_by_run[result.provenance.run_id] = result
+            await persist_extraction_result(db, result)
             item["result"] = result
             item["run_id"] = result.provenance.run_id
         except Exception as e:
@@ -104,6 +111,7 @@ async def extract_async(
     source_uri: str | None = Form(None),
     source_system: str = Form(""),
     ocr_enabled: bool = Form(True),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
     Asynchronous extraction. Returns job_id for polling.
@@ -140,6 +148,7 @@ async def extract_async(
         _jobs[job_id]["status"] = "completed"
         _jobs[job_id]["result"] = result
         _results_by_run[job_id] = result
+        await persist_extraction_result(db, result)
     except Exception as e:
         _jobs[job_id]["status"] = "failed"
         _jobs[job_id]["error"] = str(e)
@@ -186,7 +195,10 @@ def _rows_to_csv(rows: list[dict]) -> str:
 
 
 @router.get("/jobs/{job_id}/result.csv")
-async def get_extraction_result_csv(job_id: str) -> StreamingResponse:
+async def get_extraction_result_csv(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
     """Download extraction result as CSV (single row)."""
     result: ExtractionResult | None = None
     if job_id in _jobs:
@@ -196,6 +208,8 @@ async def get_extraction_result_csv(job_id: str) -> StreamingResponse:
         result = j["result"]
     elif job_id in _results_by_run:
         result = _results_by_run[job_id]
+    if result is None:
+        result = await load_extraction_result(db, job_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Job or run not found")
     csv_content = _rows_to_csv([_result_to_row(result)])
@@ -210,6 +224,7 @@ async def get_extraction_result_csv(job_id: str) -> StreamingResponse:
 @router.get("/results/export.csv")
 async def export_results_csv(
     run_ids: str = Query(..., description="Comma-separated list of run_ids"),
+    db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Download multiple extraction results as a multi-row CSV."""
     ids = [r.strip() for r in run_ids.split(",") if r.strip()]
@@ -220,6 +235,8 @@ async def export_results_csv(
         result: ExtractionResult | None = _results_by_run.get(rid)
         if result is None and rid in _jobs:
             result = _jobs[rid].get("result")
+        if result is None:
+            result = await load_extraction_result(db, rid)
         if result:
             rows.append(_result_to_row(result))
     if not rows:
@@ -246,7 +263,10 @@ async def get_extraction_job(job_id: str) -> dict:
 
 
 @router.get("/jobs/{job_id}/result")
-async def get_extraction_result(job_id: str) -> ExtractionResult:
+async def get_extraction_result(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> ExtractionResult:
     """Get extraction result by job_id or run_id (from sync extraction)."""
     if job_id in _jobs:
         j = _jobs[job_id]
@@ -257,4 +277,8 @@ async def get_extraction_result(job_id: str) -> ExtractionResult:
         return j["result"]
     if job_id in _results_by_run:
         return _results_by_run[job_id]
+    result = await load_extraction_result(db, job_id)
+    if result:
+        _results_by_run[job_id] = result
+        return result
     raise HTTPException(status_code=404, detail="Job or run not found")

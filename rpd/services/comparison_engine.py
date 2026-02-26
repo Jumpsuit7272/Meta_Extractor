@@ -220,6 +220,7 @@ def compare(
     normalization_rules: dict[str, bool] | None = None,
     similarity_threshold: float = 0.95,
     document_type: str | None = None,
+    report_id: str | None = None,
 ) -> ComparisonReport:
     """
     Compare two extraction results (FR-40 to FR-61).
@@ -248,7 +249,7 @@ def compare(
     )
 
     return ComparisonReport(
-        id=str(uuid.uuid4()),
+        id=report_id or str(uuid.uuid4()),
         status=status,
         similarity_scores=scores,
         metadata_diffs=metadata_diffs,
