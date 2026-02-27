@@ -22,6 +22,7 @@ from rpd.services.content_extractor import (
     extract_image_ocr,
     extract_msg_content,
     extract_pdf_content,
+    extract_pdf_form_info,
     extract_xlsx_content,
 )
 from rpd.services.file_identifier import identify_file
@@ -93,6 +94,15 @@ def run_extraction(
         parts, blocks, full_text = extract_eml_content(data)
     elif "outlook" in mime or ext == ".msg":
         parts, blocks, full_text = extract_msg_content(data)
+    elif "text/plain" in mime or (mime == "application/octet-stream" and ext in (".txt",)):
+        try:
+            full_text = data.decode("utf-8", errors="replace")
+        except Exception:
+            full_text = ""
+        if full_text:
+            pid = f"p_{uuid.uuid4().hex[:8]}"
+            parts = [Part(id=pid, part_type="page", index=0)]
+            blocks = [Block(id=f"b_{uuid.uuid4().hex[:12]}", part_id=pid, block_type="text", content=full_text)]
     elif "zip" in mime:
         children = extract_archive_children(data)
         for i, ch in enumerate(children):
@@ -103,6 +113,8 @@ def run_extraction(
     content_meta = extract_content_metadata(full_text, len(parts), table_count)
     if embedded and embedded.page_count is not None:
         content_meta.page_count = embedded.page_count
+    if "pdf" in mime:
+        content_meta.form_field_count, content_meta.signature_count = extract_pdf_form_info(data)
 
     # 5. Link blocks to parts
     relationships: list[Relationship] = []

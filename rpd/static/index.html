@@ -25,7 +25,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css?v=5">
+  <link rel="stylesheet" href="/static/css/style.css?v=6">
 </head>
 <body>
   <div class="app">
@@ -41,6 +41,7 @@
         <button class="nav-btn active" data-tab="extract">Extract</button>
         <button class="nav-btn" data-tab="bulk">Bulk Upload</button>
         <button class="nav-btn" data-tab="compare">Compare</button>
+        <button class="nav-btn" data-tab="history">History &amp; Links</button>
         <span class="nav-spacer"></span>
         <span class="theme-nav" id="themeFloat" role="group" aria-label="Theme">
           <button type="button" class="theme-btn nav-theme-btn" id="themeLight" data-theme="light" title="Light mode">☀</button>
@@ -79,6 +80,7 @@
               <span class="run-id" id="runIdDisplay"></span>
               <button class="btn btn-sm btn-copy" id="copyResultBtn">Copy JSON</button>
               <button class="btn btn-sm" id="downloadCsvBtn">Download CSV</button>
+              <button class="btn btn-sm btn-link" id="linkBtn" style="display:none">&#128279; Link to DB Record</button>
             </div>
           </div>
           <div class="result-tabs">
@@ -177,6 +179,7 @@
             <h3>Comparison Report</h3>
             <div class="result-actions">
               <span class="status-badge" id="compareStatus"></span>
+              <button class="btn btn-sm" id="downloadCompareCsvBtn" style="display:none">Download CSV</button>
               <button class="btn btn-sm btn-copy" id="copyCompareBtn">Copy JSON</button>
             </div>
           </div>
@@ -192,7 +195,118 @@
           </div>
         </div>
       </section>
+
+      <!-- History & Links Tab -->
+      <section id="history" class="tab-panel">
+        <div class="panel-header">
+          <h2>History &amp; Links</h2>
+          <p>Browse past extractions and create named links between any two records.</p>
+        </div>
+
+        <!-- Past Extractions -->
+        <div class="card" style="margin-bottom:1.5rem">
+          <div class="result-header">
+            <h3>Past Extractions</h3>
+            <button class="btn btn-sm" id="refreshHistoryBtn">Refresh</button>
+          </div>
+          <div id="historyTableWrap">
+            <p class="text-muted" style="padding:1rem">Click Refresh to load history.</p>
+          </div>
+        </div>
+
+        <!-- Link Tool -->
+        <div class="card" style="margin-bottom:1.5rem">
+          <h3 style="margin-bottom:1rem">Link Tool</h3>
+          <div class="link-tool-grid">
+            <div>
+              <label class="field-label">Record A — Run ID</label>
+              <input type="text" id="linkRunIdA" class="run-id-input" placeholder="Select from table above or paste run_id">
+            </div>
+            <div class="link-tool-vs">&#8596;</div>
+            <div>
+              <label class="field-label">Record B — Run ID</label>
+              <input type="text" id="linkRunIdB" class="run-id-input" placeholder="Select from table above or paste run_id">
+            </div>
+          </div>
+          <div style="margin-top:1rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+            <div>
+              <label class="field-label">Relationship</label>
+              <select id="linkLabel" class="run-id-input" style="width:auto">
+                <option value="same document">Same Document</option>
+                <option value="version">Version / Revision</option>
+                <option value="duplicate">Duplicate</option>
+                <option value="related" selected>Related</option>
+                <option value="derived from">Derived From</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" id="createLinkBtn" style="align-self:flex-end">&#128279; Create Link &amp; Compare</button>
+          </div>
+          <div id="linkProgress" class="progress-bar hidden" style="margin-top:1rem">
+            <div class="progress-fill"></div>
+            <span class="progress-text">Linking &amp; comparing…</span>
+          </div>
+        </div>
+
+        <!-- Existing Links -->
+        <div class="card" style="margin-bottom:1.5rem">
+          <div class="result-header">
+            <h3>Document Links</h3>
+            <button class="btn btn-sm" id="refreshLinksBtn">Refresh</button>
+          </div>
+          <div id="linksTableWrap">
+            <p class="text-muted" style="padding:1rem">Click Refresh to load links.</p>
+          </div>
+        </div>
+
+        <!-- Link report panel (shown when View Report clicked) -->
+        <div id="linkReportPanel" class="result-panel hidden">
+          <div class="result-header">
+            <h3 id="linkReportTitle">Link Comparison Report</h3>
+            <div class="result-actions">
+              <span class="status-badge" id="linkReportStatus"></span>
+              <button class="btn btn-sm btn-copy" id="copyLinkReportBtn">Copy JSON</button>
+            </div>
+          </div>
+          <div class="result-tabs">
+            <button class="result-tab active" data-view="link-summary">Summary</button>
+            <button class="result-tab" data-view="link-diffs">Diffs</button>
+            <button class="result-tab" data-view="link-raw">Raw JSON</button>
+          </div>
+          <div class="result-body">
+            <div id="viewLinkSummary" class="result-view active"></div>
+            <div id="viewLinkDiffs" class="result-view hidden"></div>
+            <pre id="viewLinkRaw" class="result-view raw-view hidden"></pre>
+          </div>
+        </div>
+      </section>
     </main>
+
+    <!-- Link Modal -->
+    <div id="linkModal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Link to Existing Record</h3>
+          <button class="modal-close" id="linkModalClose" aria-label="Close">&times;</button>
+        </div>
+        <p class="modal-source">Linking: <strong id="linkModalSourceName"></strong></p>
+        <input type="text" id="linkModalSearch" class="run-id-input" placeholder="Search by filename…" style="margin-bottom:.75rem">
+        <div id="linkModalList" class="modal-list"></div>
+        <div style="margin-top:1rem">
+          <label class="field-label">Relationship</label>
+          <select id="linkModalLabel" class="run-id-input" style="width:auto">
+            <option value="same document">Same Document</option>
+            <option value="version">Version / Revision</option>
+            <option value="duplicate">Duplicate</option>
+            <option value="related" selected>Related</option>
+            <option value="derived from">Derived From</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="linkModalCancel">Cancel</button>
+          <button class="btn btn-primary" id="linkModalConfirm" disabled>Link &amp; Compare</button>
+        </div>
+      </div>
+    </div>
 
     <footer class="footer">
       <span>RPD Meta Extractor v0.1</span>
@@ -202,6 +316,6 @@
     </footer>
   </div>
 
-  <script src="/static/js/app.js?v=5"></script>
+  <script src="/static/js/app.js?v=6"></script>
 </body>
 </html>

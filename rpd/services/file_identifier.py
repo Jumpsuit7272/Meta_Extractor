@@ -39,6 +39,7 @@ EXT_TO_MIME: dict[str, str] = {
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ".ppt": "application/vnd.ms-powerpoint",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".txt": "text/plain",
     ".eml": "message/rfc822",
     ".msg": "application/vnd.ms-outlook",
     ".zip": "application/zip",

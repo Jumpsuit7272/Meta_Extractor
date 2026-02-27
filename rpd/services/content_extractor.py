@@ -255,6 +255,22 @@ def extract_msg_content(data: bytes) -> tuple[list[Part], list[Block], str]:
     return [Part(id="body", part_type="attachment", index=0)], blocks, text[:50000]
 
 
+def extract_pdf_form_info(data: bytes) -> tuple[int, int]:
+    """Return (form_field_count, signature_count) for a PDF using AcroForm inspection."""
+    try:
+        from PyPDF2 import PdfReader
+        reader = PdfReader(BytesIO(data))
+        fields = reader.get_fields() or {}
+        form_field_count = len(fields)
+        signature_count = sum(
+            1 for f in fields.values()
+            if hasattr(f, "get") and f.get("/FT") == "/Sig"
+        )
+        return form_field_count, signature_count
+    except Exception:
+        return 0, 0
+
+
 def extract_archive_children(data: bytes) -> list[dict[str, Any]]:
     """Enumerate contained files in archive for child extraction."""
     children = []

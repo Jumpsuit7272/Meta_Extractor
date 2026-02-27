@@ -419,10 +419,20 @@ document.getElementById('downloadBulkCsvBtn')?.addEventListener('click', () => {
 });
 
 let lastCompareReport = null;
+let lastCompareReportId = null;
 document.getElementById('copyCompareBtn')?.addEventListener('click', () => {
   if (lastCompareReport) {
     copyToClipboard(JSON.stringify(lastCompareReport, null, 2), document.getElementById('copyCompareBtn'));
   }
+});
+document.getElementById('downloadCompareCsvBtn')?.addEventListener('click', () => {
+  if (!lastCompareReportId) return;
+  const a = document.createElement('a');
+  a.href = `${API}/compare/jobs/${lastCompareReportId}/report.csv`;
+  a.download = `comparison_${lastCompareReportId.slice(0, 8)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 });
 
 // --- Compare ---
@@ -546,8 +556,11 @@ compareBtn?.addEventListener('click', async () => {
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Comparison failed');
     const report = await res.json();
     lastCompareReport = report;
+    lastCompareReportId = report.id || null;
     renderCompareResult(report);
     compareResult?.classList.remove('hidden');
+    const dlBtn = document.getElementById('downloadCompareCsvBtn');
+    if (dlBtn) dlBtn.style.display = lastCompareReportId ? '' : 'none';
   } catch (e) {
     alert('Comparison failed: ' + e.message);
   } finally {
@@ -619,3 +632,425 @@ function formatBytes(n) {
   if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
   return (n / (1024 * 1024)).toFixed(1) + ' MB';
 }
+
+// ─── Link button on extract result ──────────────────────────────────────────
+
+const linkBtn = document.getElementById('linkBtn');
+
+// Show "Link to DB Record" button when an extraction result is available.
+// Called from doExtract after renderExtractResult.
+function showLinkBtn(result) {
+  if (!linkBtn || !result?.provenance?.run_id) return;
+  linkBtn.style.display = '';
+  linkBtn.onclick = () => openLinkModal(
+    result.provenance.run_id,
+    result.document?.technical_metadata?.file_name || result.provenance.run_id
+  );
+}
+
+// Patch doExtract to also call showLinkBtn after rendering.
+const _origDoExtract = doExtract;
+// We reach into the async flow by wrapping renderExtractResult instead.
+const _origRenderExtractResult = renderExtractResult;
+// Override: after extract completes we already call showLinkBtn in the
+// patched version of doExtract below.
+
+// Re-wire: attach showLinkBtn after the result is stored.
+(function patchExtract() {
+  const zone = document.getElementById('uploadZone');
+  const input = document.getElementById('fileInput');
+  if (!zone || !input) return;
+  // The original listeners already call doExtract; we hook into lastExtraction
+  // by overriding the copy button as a proxy — instead, we override renderExtractResult.
+  const origRender = window.renderExtractResult || renderExtractResult;
+  // We call showLinkBtn in response to any extraction result update.
+  const origFileChange = () => {};
+})();
+
+// Simpler approach: patch at the point lastExtraction is set.
+// We override doExtract inline here since it's in the same file scope.
+async function doExtractWithLink(file) {
+  extractResult?.classList.add('hidden');
+  if (linkBtn) linkBtn.style.display = 'none';
+  extractProgress?.classList.remove('hidden');
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API}/extract/sync`, { method: 'POST', body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Extraction failed');
+    }
+    const result = await res.json();
+    lastExtraction = result;
+    if (runIdDisplay) runIdDisplay.textContent = `Run: ${result.provenance?.run_id?.slice(0, 8) || '-'}`;
+    renderExtractResult(result);
+    extractResult?.classList.remove('hidden');
+    showLinkBtn(result);
+  } catch (err) {
+    alert('Extraction failed: ' + err.message);
+  } finally {
+    extractProgress?.classList.add('hidden');
+  }
+}
+
+// Replace the original file-input and drop handlers to use the patched function.
+uploadZone?.removeEventListener('drop', uploadZone._dropHandler);
+fileInput?.removeEventListener('change', fileInput._changeHandler);
+
+uploadZone?.addEventListener('drop', function _drop(e) {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) doExtractWithLink(file);
+});
+
+fileInput?.addEventListener('change', function _change() {
+  const file = fileInput.files[0];
+  if (file) doExtractWithLink(file);
+  fileInput.value = '';
+});
+
+// ─── Link Modal ──────────────────────────────────────────────────────────────
+
+let _linkModalSourceRunId = null;
+let _linkModalSelectedRunId = null;
+let _linkModalHistory = [];
+
+const linkModal = document.getElementById('linkModal');
+const linkModalSourceName = document.getElementById('linkModalSourceName');
+const linkModalSearch = document.getElementById('linkModalSearch');
+const linkModalList = document.getElementById('linkModalList');
+const linkModalLabel = document.getElementById('linkModalLabel');
+const linkModalConfirm = document.getElementById('linkModalConfirm');
+const linkModalCancel = document.getElementById('linkModalCancel');
+const linkModalClose = document.getElementById('linkModalClose');
+
+async function openLinkModal(sourceRunId, sourceFileName) {
+  _linkModalSourceRunId = sourceRunId;
+  _linkModalSelectedRunId = null;
+  if (linkModalConfirm) linkModalConfirm.disabled = true;
+  if (linkModalSourceName) linkModalSourceName.textContent = sourceFileName;
+  if (linkModalSearch) linkModalSearch.value = '';
+  if (linkModal) linkModal.style.display = 'flex';
+
+  try {
+    const data = await fetch(`${API}/history`).then(r => r.json());
+    // Exclude the source record itself
+    _linkModalHistory = data.filter(r => r.run_id !== sourceRunId);
+    renderModalList(_linkModalHistory);
+  } catch (e) {
+    if (linkModalList) linkModalList.innerHTML = '<p class="text-muted">Failed to load history.</p>';
+  }
+}
+
+function renderModalList(items) {
+  if (!linkModalList) return;
+  if (!items.length) {
+    linkModalList.innerHTML = '<p class="text-muted">No other records found.</p>';
+    return;
+  }
+  linkModalList.innerHTML = items.map(r => `
+    <div class="modal-list-row" data-run-id="${escapeHtml(r.run_id)}">
+      <span class="modal-file">${escapeHtml(r.file_name || '-')}</span>
+      <span class="modal-meta">${escapeHtml(r.mime_type || '')} &middot; ${formatBytes(r.file_size_bytes || 0)}</span>
+      <code class="modal-run-id">${r.run_id.slice(0, 8)}</code>
+      <span class="modal-date">${r.extraction_timestamp ? new Date(r.extraction_timestamp).toLocaleDateString() : ''}</span>
+    </div>
+  `).join('');
+
+  linkModalList.querySelectorAll('.modal-list-row').forEach(row => {
+    row.addEventListener('click', () => {
+      linkModalList.querySelectorAll('.modal-list-row').forEach(r => r.classList.remove('selected'));
+      row.classList.add('selected');
+      _linkModalSelectedRunId = row.dataset.runId;
+      if (linkModalConfirm) linkModalConfirm.disabled = false;
+    });
+  });
+}
+
+linkModalSearch?.addEventListener('input', () => {
+  const q = linkModalSearch.value.toLowerCase();
+  const filtered = q
+    ? _linkModalHistory.filter(r => (r.file_name || '').toLowerCase().includes(q))
+    : _linkModalHistory;
+  renderModalList(filtered);
+});
+
+function closeLinkModal() {
+  if (linkModal) linkModal.style.display = 'none';
+  _linkModalSelectedRunId = null;
+}
+
+linkModalCancel?.addEventListener('click', closeLinkModal);
+linkModalClose?.addEventListener('click', closeLinkModal);
+linkModal?.addEventListener('click', e => { if (e.target === linkModal) closeLinkModal(); });
+
+linkModalConfirm?.addEventListener('click', async () => {
+  if (!_linkModalSourceRunId || !_linkModalSelectedRunId) return;
+  const label = linkModalLabel?.value || 'related';
+  closeLinkModal();
+  await createLink(_linkModalSourceRunId, _linkModalSelectedRunId, label, true);
+});
+
+async function createLink(sourceRunId, targetRunId, label, switchToCompare = false) {
+  try {
+    const res = await fetch(`${API}/links`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_run_id: sourceRunId, target_run_id: targetRunId, label }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Link creation failed');
+    }
+    const data = await res.json();
+    if (data.comparison_report) {
+      lastCompareReport = data.comparison_report;
+      lastCompareReportId = data.comparison_report.id;
+      renderCompareResult(data.comparison_report);
+      const compareResultEl = document.getElementById('compareResult');
+      compareResultEl?.classList.remove('hidden');
+      const dlBtn = document.getElementById('downloadCompareCsvBtn');
+      if (dlBtn) dlBtn.style.display = lastCompareReportId ? '' : 'none';
+    }
+    if (switchToCompare) {
+      document.querySelector('.nav-btn[data-tab="compare"]')?.click();
+    }
+    return data;
+  } catch (e) {
+    alert('Link failed: ' + e.message);
+    return null;
+  }
+}
+
+// ─── History & Links tab ─────────────────────────────────────────────────────
+
+const linkRunIdA = document.getElementById('linkRunIdA');
+const linkRunIdB = document.getElementById('linkRunIdB');
+const linkLabelSel = document.getElementById('linkLabel');
+const createLinkBtn = document.getElementById('createLinkBtn');
+const linkProgress = document.getElementById('linkProgress');
+const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
+const refreshLinksBtn = document.getElementById('refreshLinksBtn');
+const historyTableWrap = document.getElementById('historyTableWrap');
+const linksTableWrap = document.getElementById('linksTableWrap');
+const linkReportPanel = document.getElementById('linkReportPanel');
+let _lastLinkReport = null;
+
+async function loadHistory() {
+  if (historyTableWrap) historyTableWrap.innerHTML = '<p class="text-muted" style="padding:1rem">Loading…</p>';
+  try {
+    const data = await fetch(`${API}/history`).then(r => r.json());
+    renderHistoryTable(data);
+  } catch (e) {
+    if (historyTableWrap) historyTableWrap.innerHTML = '<p class="text-muted" style="padding:1rem">Failed to load history.</p>';
+  }
+}
+
+function renderHistoryTable(rows) {
+  if (!historyTableWrap) return;
+  if (!rows.length) {
+    historyTableWrap.innerHTML = '<p class="text-muted" style="padding:1rem">No extractions found. Upload a file first.</p>';
+    return;
+  }
+  historyTableWrap.innerHTML = `
+    <table class="meta-table">
+      <thead>
+        <tr>
+          <th>File</th><th>Type</th><th>Size</th><th>Run ID</th><th>Date</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td>${escapeHtml(r.file_name || '-')}</td>
+            <td>${escapeHtml(r.mime_type || '-')}</td>
+            <td>${formatBytes(r.file_size_bytes || 0)}</td>
+            <td><code class="run-id" title="${escapeHtml(r.run_id)}">${r.run_id.slice(0, 8)}</code></td>
+            <td>${r.extraction_timestamp ? new Date(r.extraction_timestamp).toLocaleDateString() : '-'}</td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-sm hist-sel-a" data-run-id="${escapeHtml(r.run_id)}" title="Set as Record A">A</button>
+              <button class="btn btn-sm hist-sel-b" data-run-id="${escapeHtml(r.run_id)}" title="Set as Record B">B</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+
+  historyTableWrap.querySelectorAll('.hist-sel-a').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (linkRunIdA) linkRunIdA.value = btn.dataset.runId;
+    });
+  });
+  historyTableWrap.querySelectorAll('.hist-sel-b').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (linkRunIdB) linkRunIdB.value = btn.dataset.runId;
+    });
+  });
+}
+
+async function loadLinks() {
+  if (linksTableWrap) linksTableWrap.innerHTML = '<p class="text-muted" style="padding:1rem">Loading…</p>';
+  try {
+    const data = await fetch(`${API}/links`).then(r => r.json());
+    renderLinksTable(data);
+  } catch (e) {
+    if (linksTableWrap) linksTableWrap.innerHTML = '<p class="text-muted" style="padding:1rem">Failed to load links.</p>';
+  }
+}
+
+function renderLinksTable(rows) {
+  if (!linksTableWrap) return;
+  if (!rows.length) {
+    linksTableWrap.innerHTML = '<p class="text-muted" style="padding:1rem">No links yet. Create one using the Link Tool above.</p>';
+    return;
+  }
+  linksTableWrap.innerHTML = `
+    <table class="meta-table">
+      <thead>
+        <tr>
+          <th>Source</th><th>Target</th><th>Label</th><th>Date</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td title="${escapeHtml(r.source_run_id)}">${escapeHtml(r.source_file || r.source_run_id.slice(0, 8))}</td>
+            <td title="${escapeHtml(r.target_run_id)}">${escapeHtml(r.target_file || r.target_run_id.slice(0, 8))}</td>
+            <td><span class="status-badge">${escapeHtml(r.label)}</span></td>
+            <td>${r.created_at ? new Date(r.created_at).toLocaleDateString() : '-'}</td>
+            <td>
+              ${r.comparison_report_id
+                ? `<button class="btn btn-sm link-view-report" data-link-id="${r.id}">View Report</button>`
+                : '<span class="text-muted">—</span>'}
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+
+  linksTableWrap.querySelectorAll('.link-view-report').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        const data = await fetch(`${API}/links/${btn.dataset.linkId}`).then(r => r.json());
+        if (data.comparison_report) {
+          _lastLinkReport = data.comparison_report;
+          renderLinkReport(data);
+          linkReportPanel?.classList.remove('hidden');
+          linkReportPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      } catch (e) {
+        alert('Failed to load report: ' + e.message);
+      }
+    });
+  });
+}
+
+function renderLinkReport(linkData) {
+  const report = linkData.comparison_report;
+  const title = document.getElementById('linkReportTitle');
+  if (title) title.textContent = `Link #${linkData.link_id}: ${linkData.label}`;
+
+  const statusEl = document.getElementById('linkReportStatus');
+  if (statusEl) {
+    statusEl.textContent = report.status || 'unknown';
+    statusEl.className = `status-badge ${report.status || ''}`;
+  }
+
+  // Summary
+  const scores = report.similarity_scores || {};
+  const viewSummary = document.getElementById('viewLinkSummary');
+  if (viewSummary) viewSummary.innerHTML = `
+    <div class="summary-grid" style="margin-bottom:1rem">
+      <div class="summary-card"><label>Document</label><span>${((scores.document_level ?? 0) * 100).toFixed(0)}%</span></div>
+      <div class="summary-card"><label>Metadata</label><span>${((scores.metadata_similarity ?? 0) * 100).toFixed(0)}%</span></div>
+      <div class="summary-card"><label>Content</label><span>${((scores.content_similarity ?? 0) * 100).toFixed(0)}%</span></div>
+    </div>
+    <p><strong>Summary:</strong> ${escapeHtml(report.narrative_summary || 'No differences.')}</p>
+  `;
+
+  // Diffs
+  const allDiffs = [
+    ...(report.metadata_diffs || []),
+    ...(report.structure_diffs || []),
+    ...(report.content_diffs || []),
+  ];
+  const viewDiffs = document.getElementById('viewLinkDiffs');
+  if (viewDiffs) viewDiffs.innerHTML = allDiffs.length ? `
+    <div class="diff-list">
+      ${allDiffs.map(d => `
+        <div class="diff-item ${d.diff_type}">
+          <span class="path">${escapeHtml(d.path || '-')}</span>
+          <span class="severity">${d.severity || ''}</span>
+          <div class="values">
+            ${d.left_value != null ? `A: ${escapeHtml(String(d.left_value).slice(0, 100))}` : ''}
+            ${d.right_value != null ? ` → B: ${escapeHtml(String(d.right_value).slice(0, 100))}` : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  ` : '<p>No differences found.</p>';
+
+  const viewRaw = document.getElementById('viewLinkRaw');
+  if (viewRaw) viewRaw.textContent = JSON.stringify(report, null, 2);
+
+  // Wire result-tab clicks for the link report panel
+  document.querySelectorAll('#linkReportPanel .result-tab').forEach(tab => {
+    tab.onclick = () => {
+      document.querySelectorAll('#linkReportPanel .result-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const viewMap = { 'link-summary': 'viewLinkSummary', 'link-diffs': 'viewLinkDiffs', 'link-raw': 'viewLinkRaw' };
+      document.querySelectorAll('#linkReportPanel .result-view').forEach(v => {
+        v.classList.add('hidden'); v.classList.remove('active');
+      });
+      const target = document.getElementById(viewMap[tab.dataset.view]);
+      if (target) { target.classList.remove('hidden'); target.classList.add('active'); }
+    };
+  });
+}
+
+document.getElementById('copyLinkReportBtn')?.addEventListener('click', () => {
+  if (_lastLinkReport) copyToClipboard(JSON.stringify(_lastLinkReport, null, 2), document.getElementById('copyLinkReportBtn'));
+});
+
+refreshHistoryBtn?.addEventListener('click', loadHistory);
+refreshLinksBtn?.addEventListener('click', loadLinks);
+
+createLinkBtn?.addEventListener('click', async () => {
+  const a = linkRunIdA?.value.trim();
+  const b = linkRunIdB?.value.trim();
+  if (!a || !b) { alert('Enter a Run ID for both Record A and Record B.'); return; }
+  if (a === b) { alert('Record A and Record B must be different.'); return; }
+  const label = linkLabelSel?.value || 'related';
+
+  linkProgress?.classList.remove('hidden');
+  createLinkBtn.disabled = true;
+  try {
+    const data = await createLink(a, b, label, false);
+    if (data) {
+      // Show the link report inline in the History tab
+      _lastLinkReport = data.comparison_report;
+      renderLinkReport({ link_id: data.link_id, label, comparison_report: data.comparison_report });
+      linkReportPanel?.classList.remove('hidden');
+      linkReportPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Refresh the links table
+      loadLinks();
+    }
+  } finally {
+    linkProgress?.classList.add('hidden');
+    createLinkBtn.disabled = false;
+  }
+});
+
+// Auto-load history when the History tab is first activated.
+let _historyLoaded = false;
+document.querySelectorAll('.nav-btn[data-tab]').forEach(btn => {
+  if (btn.dataset.tab === 'history') {
+    btn.addEventListener('click', () => {
+      if (!_historyLoaded) { _historyLoaded = true; loadHistory(); loadLinks(); }
+    });
+  }
+});

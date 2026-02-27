@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from rpd.api.comparison import router as compare_router
 from rpd.api.extraction import router as extract_router
 from rpd.api.ingest import router as ingest_router
+from rpd.api.links import router as links_router
 from rpd.config import settings
 from rpd.database import init_db
 
@@ -41,6 +42,7 @@ app.add_middleware(
 app.include_router(extract_router)
 app.include_router(compare_router)
 app.include_router(ingest_router)
+app.include_router(links_router)
 
 # Static files for UI - use multiple path strategies for reliability
 def _find_static() -> tuple[Path | None, str | None]:

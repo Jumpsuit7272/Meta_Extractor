@@ -1,5 +1,7 @@
 """DB persistence service: Pydantic ↔ ORM conversion."""
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +11,7 @@ from rpd.db_models import (
     DBContentMetadata,
     DBDiffItem,
     DBDocument,
+    DBDocumentLink,
     DBEmbeddedMetadata,
     DBExtractionResult,
     DBPart,
@@ -32,6 +35,17 @@ from rpd.models import (
     SimilarityScores,
     TechnicalMetadata,
 )
+
+def _json_safe(v):
+    """Recursively convert a value to something JSON-serializable (str fallback for unknown types)."""
+    if v is None or isinstance(v, (str, int, float, bool)):
+        return v
+    if isinstance(v, dict):
+        return {k: _json_safe(val) for k, val in v.items()}
+    if isinstance(v, list):
+        return [_json_safe(item) for item in v]
+    return str(v)
+
 
 # Known EmbeddedMetadata field names (by_alias=False)
 _EMB_KNOWN = frozenset({
@@ -343,8 +357,8 @@ async def persist_comparison_report(
                 category=category,
                 diff_type=d.diff_type,
                 path=d.path,
-                left_value=d.left_value,
-                right_value=d.right_value,
+                left_value=_json_safe(d.left_value),
+                right_value=_json_safe(d.right_value),
                 severity=d.severity,
                 left_block_id=d.left_block_id,
                 right_block_id=d.right_block_id,
@@ -413,3 +427,92 @@ async def load_comparison_report(
         right_run_id=db_report.right_run_id,
         created_at=db_report.created_at,
     )
+
+
+async def list_extractions(session: AsyncSession) -> list[dict]:
+    """Return lightweight summary of all past extractions, newest first."""
+    stmt = (
+        select(
+            DBProvenance.run_id,
+            DBProvenance.extraction_timestamp,
+            DBTechnicalMetadata.file_name,
+            DBTechnicalMetadata.mime_type,
+            DBTechnicalMetadata.file_size_bytes,
+            DBTechnicalMetadata.extension,
+        )
+        .join(DBExtractionResult, DBExtractionResult.run_id == DBProvenance.run_id)
+        .join(DBTechnicalMetadata, DBTechnicalMetadata.document_id == DBExtractionResult.document_id)
+        .order_by(DBProvenance.extraction_timestamp.desc())
+    )
+    rows = (await session.execute(stmt)).all()
+    return [
+        {
+            "run_id": r.run_id,
+            "file_name": r.file_name,
+            "mime_type": r.mime_type,
+            "file_size_bytes": r.file_size_bytes,
+            "extension": r.extension,
+            "extraction_timestamp": r.extraction_timestamp.isoformat() if r.extraction_timestamp else None,
+        }
+        for r in rows
+    ]
+
+
+async def create_document_link(
+    session: AsyncSession,
+    source_run_id: str,
+    target_run_id: str,
+    label: str,
+    comparison_report_id: str | None = None,
+) -> DBDocumentLink:
+    """Insert a document link and flush."""
+    link = DBDocumentLink(
+        source_run_id=source_run_id,
+        target_run_id=target_run_id,
+        label=label,
+        comparison_report_id=comparison_report_id,
+        created_at=datetime.utcnow(),
+    )
+    session.add(link)
+    await session.flush()
+    return link
+
+
+async def list_document_links(session: AsyncSession) -> list[dict]:
+    """Return all document links with file names for both sides, newest first."""
+    src_tech = DBTechnicalMetadata.__table__.alias("src_tech")
+    tgt_tech = DBTechnicalMetadata.__table__.alias("tgt_tech")
+    src_er = DBExtractionResult.__table__.alias("src_er")
+    tgt_er = DBExtractionResult.__table__.alias("tgt_er")
+
+    stmt = (
+        select(
+            DBDocumentLink.id,
+            DBDocumentLink.source_run_id,
+            DBDocumentLink.target_run_id,
+            DBDocumentLink.label,
+            DBDocumentLink.comparison_report_id,
+            DBDocumentLink.created_at,
+            src_tech.c.file_name.label("source_file"),
+            tgt_tech.c.file_name.label("target_file"),
+        )
+        .join(src_er, src_er.c.run_id == DBDocumentLink.source_run_id)
+        .join(src_tech, src_tech.c.document_id == src_er.c.document_id)
+        .join(tgt_er, tgt_er.c.run_id == DBDocumentLink.target_run_id)
+        .join(tgt_tech, tgt_tech.c.document_id == tgt_er.c.document_id)
+        .order_by(DBDocumentLink.created_at.desc())
+    )
+    rows = (await session.execute(stmt)).all()
+    return [
+        {
+            "id": r.id,
+            "source_run_id": r.source_run_id,
+            "source_file": r.source_file,
+            "target_run_id": r.target_run_id,
+            "target_file": r.target_file,
+            "label": r.label,
+            "comparison_report_id": r.comparison_report_id,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]

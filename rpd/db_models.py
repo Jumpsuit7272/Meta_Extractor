@@ -273,3 +273,24 @@ class DBDiffItem(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
     report: Mapped[DBComparisonReport] = relationship(back_populates="diff_items")
+
+
+# ── Document Links ────────────────────────────────────────────────────────────
+
+class DBDocumentLink(Base):
+    __tablename__ = "document_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_run_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("provenance.run_id"), nullable=False
+    )
+    target_run_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("provenance.run_id"), nullable=False
+    )
+    label: Mapped[str] = mapped_column(Text, nullable=False, default="related")
+    comparison_report_id: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("comparison_reports.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )

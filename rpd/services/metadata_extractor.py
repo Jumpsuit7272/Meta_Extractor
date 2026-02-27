@@ -164,15 +164,33 @@ def extract_embedded_metadata(
     return EmbeddedMetadata(**{k: v for k, v in info.items() if v is not None})
 
 
+def _detect_language(text: str) -> tuple[str | None, float | None]:
+    """Return (language_code, confidence) for the given text, or (None, None) on failure."""
+    try:
+        from langdetect import DetectorFactory, detect_langs
+        DetectorFactory.seed = 0  # deterministic results
+        langs = detect_langs(text)
+        if langs:
+            top = langs[0]
+            return top.lang, round(top.prob, 3)
+    except Exception:
+        pass
+    return None, None
+
+
 def extract_content_metadata(text: str, parts_count: int = 0, table_count: int = 0) -> ContentMetadata:
     """Derive content metadata from extracted text and structure."""
     words = text.split() if text else []
     word_count = len(words)
     text_length = len(text) if text else 0
 
+    language, language_confidence = (None, None)
+    if word_count >= 5:
+        language, language_confidence = _detect_language(text)
+
     return ContentMetadata(
-        language=None,
-        language_confidence=None,
+        language=language,
+        language_confidence=language_confidence,
         page_count=parts_count if parts_count else None,
         text_length=text_length,
         word_count=word_count,

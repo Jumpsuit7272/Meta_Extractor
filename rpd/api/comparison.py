@@ -174,7 +174,7 @@ def _report_to_rows(report: ComparisonReport) -> list[dict]:
                 "severity": d.severity or "",
                 "left_value": str(d.left_value) if d.left_value is not None else "",
                 "right_value": str(d.right_value) if d.right_value is not None else "",
-                "confidence": d.confidence if d.confidence is not None else "",
+                "confidence": d.left_confidence if d.left_confidence is not None else "",
             })
     return rows
 
